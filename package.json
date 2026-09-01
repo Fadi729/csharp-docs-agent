@@ -42,6 +42,7 @@
     "build": "ray build",
     "dev": "ray develop",
     "lint": "ray lint",
-    "fix-lint": "ray lint --fix"
+    "fix-lint": "ray lint --fix",
+    "test": "node --experimental-strip-types --test src/parse-models.test.ts"
   }
 }

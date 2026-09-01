@@ -2,7 +2,6 @@ import {
   Action,
   ActionPanel,
   Detail,
-  environment,
   Form,
   Icon,
   Keyboard,
@@ -10,10 +9,10 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { spawn } from "child_process";
-import { existsSync, mkdirSync, realpathSync } from "fs";
-import { homedir } from "os";
-import { dirname, join } from "path";
 import { useEffect, useRef, useState } from "react";
+import { AGENT_MISSING_MESSAGE, agentEnv, resolveAgentLaunch, scratchDir } from "./cli";
+import { ModelPicker } from "./model-picker";
+import { DEFAULT_MODEL, loadStoredModel } from "./models";
 
 type AgentEvent = {
   type?: string;
@@ -30,6 +29,7 @@ type AgentEvent = {
 
 type AgentRequest = {
   text: string;
+  model: string;
   resumeId?: string;
   isFollowUp?: boolean;
 };
@@ -97,54 +97,6 @@ function buildAgentPrompt(userPrompt: string): string {
 
 User question:
 ${userPrompt}`;
-}
-
-function unixPath(): string {
-  return [
-    join(homedir(), ".local/bin"),
-    "/usr/local/bin",
-    "/opt/homebrew/bin",
-    "/usr/bin",
-    "/bin",
-    process.env.PATH ?? "",
-  ].join(":");
-}
-
-/**
- * An empty, extension-owned directory. The agent runs with `--trust`, so this
- * keeps it from reaching into the home folder for a question that never needs
- * the filesystem.
- */
-function scratchDir(): string {
-  const dir = join(environment.supportPath, "scratch");
-  try {
-    mkdirSync(dir, { recursive: true });
-    return dir;
-  } catch {
-    return homedir();
-  }
-}
-
-function resolveAgentLaunch(): { command: string; prefixArgs: string[] } | null {
-  const wrapper = [
-    join(homedir(), ".local/bin/agent"),
-    "/usr/local/bin/agent",
-    "/opt/homebrew/bin/agent",
-  ].find((path) => existsSync(path));
-  if (!wrapper) return null;
-
-  try {
-    const scriptDir = dirname(realpathSync(wrapper));
-    const nodeBin = join(scriptDir, "node");
-    const indexJs = join(scriptDir, "index.js");
-    if (existsSync(nodeBin) && existsSync(indexJs)) {
-      return { command: nodeBin, prefixArgs: ["--use-system-ca", indexJs] };
-    }
-  } catch {
-    // Fall back to the bash wrapper.
-  }
-
-  return { command: "/bin/bash", prefixArgs: [wrapper] };
 }
 
 /**
@@ -220,9 +172,9 @@ function FollowUpForm({ onAsk }: { onAsk: (question: string) => void }) {
 
 export default function Command(props: LaunchProps<{ arguments: { prompt: string } }>) {
   const prompt = props.arguments?.prompt?.trim() ?? "";
-  const [request, setRequest] = useState<AgentRequest | null>(
-    prompt ? { text: buildAgentPrompt(prompt) } : null,
-  );
+  const [request, setRequest] = useState<AgentRequest | null>(null);
+  const [ready, setReady] = useState(false);
+  const [model, setModel] = useState(DEFAULT_MODEL);
   const initialHeader = prompt ? quoteQuestion("Question", prompt) : "";
   const [markdown, setMarkdown] = useState(initialHeader);
   const [answer, setAnswer] = useState("");
@@ -235,6 +187,22 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
   const textRef = useRef(initialHeader);
 
   useEffect(() => {
+    let cancelled = false;
+    loadStoredModel().then((stored) => {
+      if (cancelled) return;
+      setModel(stored);
+      if (prompt) {
+        setRequest({ text: buildAgentPrompt(prompt), model: stored });
+      }
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [prompt]);
+
+  useEffect(() => {
+    if (!ready) return;
     if (!request) {
       setError("Prompt is required");
       setIsLoading(false);
@@ -253,9 +221,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
 
     const launch = resolveAgentLaunch();
     if (!launch) {
-      fail(
-        "Cursor CLI (`agent`) was not found. Install it with:\n\n```bash\ncurl https://cursor.com/install -fsS | bash\n```",
-      );
+      fail(AGENT_MISSING_MESSAGE);
       return;
     }
 
@@ -278,7 +244,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
       "--mode",
       "ask",
       "--model",
-      "auto",
+      request.model || DEFAULT_MODEL,
       "--output-format",
       "stream-json",
       "--stream-partial-output",
@@ -290,12 +256,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
 
     const child = spawn(launch.command, args, {
       cwd: scratchDir(),
-      env: {
-        ...process.env,
-        PATH: unixPath(),
-        HOME: homedir(),
-        CURSOR_INVOKED_AS: "agent",
-      },
+      env: agentEnv(),
     });
 
     let lineBuffer = "";
@@ -387,7 +348,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
       }, KILL_GRACE_MS);
       child.once("close", () => clearTimeout(timer));
     };
-  }, [request]);
+  }, [request, ready]);
 
   // Only runs between launch and the first token, which is the stretch where
   // the view is otherwise empty.
@@ -409,7 +370,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
     setIsLoading(true);
     setAwaitingAnswer(true);
     setActivity(null);
-    setRequest({ text: question, resumeId: sessionId, isFollowUp: true });
+    setRequest({ text: question, resumeId: sessionId, isFollowUp: true, model });
   };
 
   let body: string;
@@ -433,6 +394,11 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
       isLoading={isLoading}
       markdown={body}
       navigationTitle={`C# Docs · ${status}`}
+      metadata={
+        <Detail.Metadata>
+          <Detail.Metadata.Label title="Model" text={model} icon={Icon.Stars} />
+        </Detail.Metadata>
+      }
       actions={
         <ActionPanel>
           {canFollowUp ? (
@@ -443,6 +409,12 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
               target={<FollowUpForm onAsk={askFollowUp} />}
             />
           ) : null}
+          <Action.Push
+            title="Change Model"
+            icon={Icon.Switch}
+            shortcut={{ modifiers: ["cmd"], key: "m" }}
+            target={<ModelPicker selected={model} onSelect={setModel} />}
+          />
           <Action.CopyToClipboard title="Copy Answer" content={answer} />
           <Action.Paste title="Paste Answer" content={answer} />
           <Action.CopyToClipboard
