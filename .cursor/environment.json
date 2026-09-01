@@ -1,0 +1,4 @@
+{
+  "name": "C# Docs — Raycast extension",
+  "install": "npm ci"
+}

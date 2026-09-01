@@ -1,0 +1,48 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "csharp-docs-agent",
+  "title": "C# Docs",
+  "description": "Ask C# and .NET documentation questions. Unrelated topics are declined.",
+  "icon": "icon.png",
+  "author": "Fadi729",
+  "categories": ["Developer Tools", "Documentation"],
+  "keywords": ["csharp", "c#", "dotnet", ".net", "docs"],
+  "license": "MIT",
+  "platforms": ["macOS"],
+  "commands": [
+    {
+      "name": "ask-csharp-docs",
+      "title": "C# Docs",
+      "description": "Answer a C# / .NET documentation question",
+      "mode": "view",
+      "keywords": ["csharp", "c#", "dotnet", ".net"],
+      "arguments": [
+        {
+          "name": "prompt",
+          "placeholder": "e.g. How do I iterate over a set?",
+          "type": "text",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.94.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.0.4",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.10",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.7.2"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix",
+    "test": "node --experimental-strip-types --test src/parse-models.test.ts"
+  }
+}
