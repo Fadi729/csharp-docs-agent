@@ -17,7 +17,7 @@ cursor-agent login
 
 The extension looks for the `agent` binary in `~/.local/bin`, `/usr/local/bin`, and `/opt/homebrew/bin`, and uses whatever credentials the CLI has already stored.
 
-The selected model defaults to `auto`. Press `⌘M` (Change Model) to pick a different one. The list is loaded from `agent --list-models`, so only models your Cursor CLI account is allowed to use appear. The choice is remembered for later questions; follow-ups in the current session keep the conversation and pass the selected model through to the CLI.
+The selected model defaults to `auto` and is shown in the navigation title. Press `⌘M` (Change Model) to pick a different one. The list is loaded from `agent --list-models`, so only models your Cursor CLI account is allowed to use appear. The choice is remembered for later questions; follow-ups in the current session keep the conversation and pass the selected model through to the CLI.
 
 ## Development
 

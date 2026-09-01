@@ -393,12 +393,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
     <Detail
       isLoading={isLoading}
       markdown={body}
-      navigationTitle={`C# Docs · ${status}`}
-      metadata={
-        <Detail.Metadata>
-          <Detail.Metadata.Label title="Model" text={model} icon={Icon.Stars} />
-        </Detail.Metadata>
-      }
+      navigationTitle={`C# Docs · ${model} · ${status}`}
       actions={
         <ActionPanel>
           {canFollowUp ? (
@@ -410,7 +405,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
             />
           ) : null}
           <Action.Push
-            title="Change Model"
+            title={`Change Model (${model})`}
             icon={Icon.Switch}
             shortcut={{ modifiers: ["cmd"], key: "m" }}
             target={<ModelPicker selected={model} onSelect={setModel} />}
