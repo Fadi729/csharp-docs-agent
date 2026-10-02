@@ -4,6 +4,8 @@ Ask quick C# and .NET documentation questions from Raycast, with follow-ups in t
 
 The answer streams into the view as the agent writes it. Press `⌘N` to ask a follow-up once the first answer finishes — follow-ups resume the same session, so you can say "and with LINQ?" without restating context.
 
+Recent conversations stay on this Mac after you close the command. Open **C# Docs History** (or press `⌘⇧H` from an answer) to read, copy, or delete them. The list keeps the 20 most recent conversations, including follow-ups. Closing the answer view also saves whatever has streamed so far.
+
 Questions that aren't about C# or .NET are declined.
 
 ## Requirements
@@ -31,3 +33,5 @@ npm run dev
 ## How it works
 
 The command spawns the Cursor CLI in `ask` mode with `--output-format stream-json` and `--model` set to the selected CLI-allowed model, parses the NDJSON event stream line by line, and renders assistant text deltas into a `Detail` view. The agent runs in an empty extension-owned scratch directory so that `--trust` can't reach into your home folder for a question that never needs the filesystem.
+
+When a turn produces text, the transcript is written to Raycast local storage. A later follow-up updates that same entry. History stores the conversation markdown, the latest answer, and the model name.

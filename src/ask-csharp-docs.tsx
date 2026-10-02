@@ -9,8 +9,12 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { spawn } from "child_process";
+import { randomUUID } from "crypto";
 import { useEffect, useRef, useState } from "react";
 import { AGENT_MISSING_MESSAGE, agentEnv, resolveAgentLaunch, scratchDir } from "./cli";
+import History from "./history";
+import type { HistoryDraft } from "./history-entries";
+import { rememberHistory } from "./history-store";
 import { ModelPicker } from "./model-picker";
 import { DEFAULT_MODEL, loadStoredModel } from "./models";
 
@@ -32,6 +36,14 @@ type AgentRequest = {
   model: string;
   resumeId?: string;
   isFollowUp?: boolean;
+};
+
+type HistoryMeta = {
+  id: string;
+  question: string;
+  answer: string;
+  hasAnswer: boolean;
+  model: string;
 };
 
 const SYSTEM_PROMPT = `You are a specialized C# and .NET documentation agent.
@@ -133,6 +145,22 @@ function eventSessionId(event: AgentEvent): string | undefined {
   return event.session_id || event.sessionId;
 }
 
+function toHistoryDraft(meta: HistoryMeta, markdown: string, model: string): HistoryDraft | null {
+  if (!meta.id || !meta.hasAnswer || !markdown.trim()) return null;
+  return {
+    id: meta.id,
+    question: meta.question,
+    markdown,
+    answer: meta.answer,
+    model: model || meta.model,
+  };
+}
+
+function saveHistory(draft: HistoryDraft | null) {
+  if (!draft) return;
+  void rememberHistory(draft).catch(() => undefined);
+}
+
 function FollowUpForm({ onAsk }: { onAsk: (question: string) => void }) {
   const { pop } = useNavigation();
   const [error, setError] = useState<string | undefined>();
@@ -171,6 +199,7 @@ function FollowUpForm({ onAsk }: { onAsk: (question: string) => void }) {
 }
 
 export default function Command(props: LaunchProps<{ arguments: { prompt: string } }>) {
+  const { push } = useNavigation();
   const prompt = props.arguments?.prompt?.trim() ?? "";
   const [request, setRequest] = useState<AgentRequest | null>(null);
   const [ready, setReady] = useState(false);
@@ -185,6 +214,15 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const textRef = useRef(initialHeader);
+  const modelRef = useRef(model);
+  const historyRef = useRef<HistoryMeta>({
+    id: "",
+    question: prompt,
+    answer: "",
+    hasAnswer: false,
+    model: DEFAULT_MODEL,
+  });
+  modelRef.current = model;
 
   useEffect(() => {
     let cancelled = false;
@@ -235,6 +273,15 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
       const header = quoteQuestion("Question", prompt);
       textRef.current = header;
       setMarkdown(header);
+      historyRef.current = {
+        id: randomUUID(),
+        question: prompt,
+        answer: "",
+        hasAnswer: false,
+        model: request.model,
+      };
+    } else {
+      historyRef.current = { ...historyRef.current, answer: "", model: request.model };
     }
 
     const args = [
@@ -269,6 +316,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
       textRef.current =
         textRef.current.slice(0, textRef.current.length - turnAnswer.length) + merged;
       turnAnswer = merged;
+      historyRef.current = { ...historyRef.current, answer: merged, hasAnswer: true };
       setAnswer(merged);
       setAwaitingAnswer(false);
       setMarkdown(textRef.current);
@@ -329,6 +377,7 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
       setIsLoading(false);
       setAwaitingAnswer(false);
       setActivity(null);
+      saveHistory(toHistoryDraft(historyRef.current, textRef.current, modelRef.current));
       if (code !== 0 && !turnAnswer) {
         fail(
           stderr.trim() ||
@@ -341,6 +390,9 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
 
     return () => {
       cancelled = true;
+      // Closing the command unloads this view. The close handler bails out once
+      // `cancelled` is set, so the transcript has to be stored here too.
+      saveHistory(toHistoryDraft(historyRef.current, textRef.current, modelRef.current));
       if (child.exitCode !== null || child.signalCode !== null) return;
       child.kill("SIGTERM");
       const timer = setTimeout(() => {
@@ -359,6 +411,12 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
     }, SPINNER_INTERVAL_MS);
     return () => clearInterval(id);
   }, [awaitingAnswer]);
+
+  const openHistory = () => {
+    const draft = toHistoryDraft(historyRef.current, textRef.current, modelRef.current);
+    const stored = draft ? rememberHistory(draft) : Promise.resolve();
+    void stored.finally(() => push(<History />)).catch(() => undefined);
+  };
 
   const askFollowUp = (question: string) => {
     // The resumed session already carries SYSTEM_PROMPT, so the raw question
@@ -409,6 +467,12 @@ export default function Command(props: LaunchProps<{ arguments: { prompt: string
             icon={Icon.Switch}
             shortcut={{ modifiers: ["cmd"], key: "m" }}
             target={<ModelPicker selected={model} onSelect={setModel} />}
+          />
+          <Action
+            title="View History"
+            icon={Icon.Clock}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}
+            onAction={openHistory}
           />
           <Action.CopyToClipboard title="Copy Answer" content={answer} />
           <Action.Paste title="Paste Answer" content={answer} />

@@ -24,6 +24,13 @@
           "required": true
         }
       ]
+    },
+    {
+      "name": "history",
+      "title": "C# Docs History",
+      "description": "Reopen recent C# and .NET documentation answers",
+      "mode": "view",
+      "keywords": ["history", "recent", "answers", "csharp", "c#", "dotnet"]
     }
   ],
   "dependencies": {
@@ -43,6 +50,6 @@
     "dev": "ray develop",
     "lint": "ray lint",
     "fix-lint": "ray lint --fix",
-    "test": "node --experimental-strip-types --test src/parse-models.test.ts"
+    "test": "node --experimental-strip-types --test src/*.test.ts"
   }
 }
